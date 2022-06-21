@@ -41,6 +41,11 @@ class EditProductSerializer(serializers.ModelSerializer):
         model=Product
         fields=['product_name','category','quantity','price','pic','description']
         
+class SellerIndexSerializer(serializers.ModelSerializer):
+    class Meta:
+        model=Buyproduct
+        fields='__all__'
+        
 class ViewProductSerializer(serializers.ModelSerializer):
     class Meta:
         model=Product
@@ -88,3 +93,23 @@ class EditMyBuyProductSerializer(serializers.ModelSerializer):
         model=Buyproduct
         fields=['addres','quantity']
         
+class EditStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model=Buyproduct
+        fields=['status']
+        
+class ForgotPasswordSerializer(serializers.ModelSerializer):
+    email=serializers.EmailField(max_length=30)
+    class Meta:
+        model=User
+        fields=['email']
+        
+class ChangePasswordSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, required=True)
+    password2 = serializers.CharField(write_only=True, required=True)
+    old_password = serializers.CharField(write_only=True, required=True)
+
+    class Meta:
+        model = User
+        fields = ('old_password', 'password', 'password2')
+    

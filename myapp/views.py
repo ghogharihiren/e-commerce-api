@@ -9,6 +9,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import*
 from rest_framework import status
 from django.contrib.auth.hashers import make_password
+from rest_framework.filters import SearchFilter
+import random
+from django.conf import settings
+from django.core.mail import send_mail
 
 
 def get_tokens_for_user(user):
@@ -26,8 +30,10 @@ def index(request):
         'register':'/register/',
         'login':'/login/',
         'verifay':'/verifay/id',
+        'user-delete':'/user-delete/id',
         'admin-index':'/admin-index/',
         'edit-profile':'/edit-profile/',
+        'seller-index':'/seller-index/',
         'add-product':'/add-product/',
         'my-product':'/my-product/',
         'edit-product':'/edit-product/id',
@@ -41,7 +47,12 @@ def index(request):
         'checkout':'/checkout/',
         'buy-product/':'/buy-product/product-id',
         'my-buy':'/my-buy/',
-        'edit-buyproduct':'/edit-buyproduct/id'
+        'edit-buyproduct':'/edit-buyproduct/id',
+        'cancel-ordered':'/cancel-ordered/id',
+        'edit-status':'/edit-status/id',
+        'search':'/search/',
+        'forgot-password':'/forgot-password/',
+        'change-password':'/change-password/',
     }
     return Response(api_url)
 
@@ -51,7 +62,7 @@ class CreateUserView(GenericAPIView):
     
     def post(self,request):
         serializer=UserCreateSerializer(data=request.data)
-        if serializer.is_valid(raise_exception=True):
+        if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
         return Response({'status':status.HTTP_404_NOT_FOUND,'msg':'enter the valid data'})
@@ -62,7 +73,7 @@ class LoginUserView(GenericAPIView):
     
     def post(self,request):
         serializer = UserLoginSerializer(data=request.data)
-        if serializer.is_valid(raise_exception=True):
+        if serializer.is_valid():
             email = serializer.validated_data.get('email')
             password = serializer.validated_data.get('password')
             user = authenticate(email=email, password=password)
@@ -80,11 +91,48 @@ class LoginUserView(GenericAPIView):
                 return Response({'status':status.HTTP_404_NOT_FOUND,'msg':"invalid email and password "})
         return Response(serializer.errors,status=status.HTTP_400_BAD_REQUEST)
     
+class ForgotPasswordView(GenericAPIView):
+    serializer_class=ForgotPasswordSerializer
+    
+    def post(self,request):
+        serializer=ForgotPasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            email=serializer.validated_data.get('email')
+            if User.objects.filter(email=email).exists():
+                user=User.objects.get(email=email)
+                password = ''.join(random.choices('qwyertovghlk34579385',k=8))
+                subject="Rest Password"
+                message = f"""Hello {user.email},Your New password is {password}"""
+                email_from = settings.EMAIL_HOST_USER
+                recipient_list = [user.email,]
+                send_mail( subject, message, email_from, recipient_list )
+                user.password=make_password(password)
+                user.save()
+                return Response('your new password send')
+            else:
+                return Response('enter your email')
+        else:
+            return Response('enter the valid data')
+
+    
+class UserChangePasswordview(GenericAPIView):
+    serializer_class=ChangePasswordSerializer
+    permission_classes=[IsAuthenticated]
+    
+    def put(self,request):
+        user=User.objects.get(id=request.user.id)
+        serializer=ChangePasswordSerializer(instance=user,data=request.data)
+        if serializer.is_valid():
+            password=serializer.validated_data.get('password')
+            serializer.save(password=make_password(password))
+            return Response('your password change')
+        else:
+            return Response('enter the valid data')
+        
 class AdminIndexView(ListAPIView):
     permission_classes=[IsAdminUser]
     serializer_class=ViewUserSerializer
     queryset=User.objects.all()
-    
     
 class SellerVerificationView(GenericAPIView):
     permission_classes=[IsAdminUser]
@@ -111,8 +159,34 @@ class EditUserView(GenericAPIView):
             return Response(serializer.data)
         return Response({'status':status.HTTP_404_NOT_FOUND,'msg':'enter the valid data'}) 
     
+class DeleteUserView(GenericAPIView):
+    permission_classes=[IsAdminUser]
+    
+    def get_object(self, pk):
+        try:
+            return User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            raise Http404
+    
+    def put(self,request,pk):
+        pro=self.get_object(pk=pk)
+        pro.delete()
+        return Response('user delete')
+    
 
 #----------------------------------------------------SELLER----------------------------------------
+
+class SellerIndexView(GenericAPIView):
+    permission_classes=[IsAuthenticated]
+    
+    def get(self,request):
+        l=[]
+        all=Buyproduct.objects.all()
+        for i in all:
+            if i.product.seller == request.user:
+                l.append(i)
+        serializer=SellerIndexSerializer(l,many=True)
+        return Response(serializer.data)
 
 class AddProductView(GenericAPIView):
     permission_classes=[IsAuthenticated]
@@ -179,6 +253,28 @@ class DeleteProductView(GenericAPIView):
             return Response('your product delete')
         else:
             return Response('you cannot delete other seller product')
+        
+class EditStatusView(GenericAPIView):
+    permission_classes=[IsAuthenticated]
+    serializer_class=EditStatusSerializer
+    
+    def get_object(self, pk):
+        try:
+            return Buyproduct.objects.get(pk=pk)
+        except Buyproduct.DoesNotExist:
+            raise Http404
+        
+    def put(self,request,pk):
+        pro=self.get_object(pk=pk)
+        if pro.product.seller == request.user:
+            serializer=EditStatusSerializer(instance=pro,data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response({'status':status.HTTP_200_OK,'msg':'status update'})
+            else:
+                return Response({'status':status.HTTP_404_NOT_FOUND,'msg':'enter the valid status'})
+        else:
+            return Response('you cannot edit other ordered status')
         
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Buyer>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
@@ -350,13 +446,14 @@ class EditMyBuyProductView(GenericAPIView):
             if pro.status == 'pending' or pro.status == 'packing':
                 serializer=EditMyBuyProductSerializer(instance=pro,data=request.data)
                 if serializer.is_valid():
-                    quanttiy=int(serializer.validated_data.get('quantity'))
-                    if quanttiy > 0:
-                        if  pro.product.quantity >= quanttiy:
-                            pro.product.quantity += quanttiy
-                            pro.product.save()
-                            serializer.save()
-                            pro.product.quantity -= quanttiy
+                    pro.product.quantity += pro.quantity
+                    pro.product.save()
+                    quantity=int(serializer.validated_data.get('quantity'))
+                    amount=pro.product.price *quantity 
+                    if quantity > 0:
+                        if  pro.product.quantity >= quantity :
+                            serializer.save(total_amount=amount)
+                            pro.product.quantity -= quantity 
                             pro.product.save()
                             return Response({'status':status.HTTP_200_OK,'msg':'your buy product update'})
                         else:
@@ -370,19 +467,26 @@ class EditMyBuyProductView(GenericAPIView):
         else:
             return Response('you cannot edit other user ordered')
                     
-                    
-                        
+class CancelOrderedView(GenericAPIView):
+    permission_classes=[IsAuthenticated]
+    
+    def get_object(self, pk):
+        try:
+            return Buyproduct.objects.get(pk=pk)
+        except Buyproduct.DoesNotExist:
+            raise Http404
+        
+    def delete(self,request,pk):
+        pro=self.get_object(pk=pk)
+        if pro.user == request.user:
+            pro.delete()
+            return Response('your ordered cancel')
+        else:
+            return Response('you cannot cancel other user ordered')
+        
 
-    
-    
-            
-                
-                
-                    
-                    
-                
-            
-        
-             
-        
-        
+class SearchView(ListAPIView):
+    queryset=Product.objects.all()
+    serializer_class=BuyerIndexSerializer
+    filter_backends=[SearchFilter]
+    search_fields=['^product_name']
