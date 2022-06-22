@@ -64,7 +64,7 @@ class CreateUserView(GenericAPIView):
         serializer=UserCreateSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data)
+            return Response({'status':status.HTTP_200_OK,'msg':'Your account create','data':serializer.data})
         return Response({'status':status.HTTP_404_NOT_FOUND,'msg':'enter the valid data'})
     
 class LoginUserView(GenericAPIView):
@@ -129,6 +129,8 @@ class UserChangePasswordview(GenericAPIView):
         else:
             return Response('enter the valid data')
         
+
+        
 class AdminIndexView(ListAPIView):
     permission_classes=[IsAdminUser]
     serializer_class=ViewUserSerializer
@@ -156,7 +158,7 @@ class EditUserView(GenericAPIView):
         serializer=EditUserSerializer(instance=uid,data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data)
+            return Response({'status':status.HTTP_200_OK,'msg':'your account update','data':serializer.data})
         return Response({'status':status.HTTP_404_NOT_FOUND,'msg':'enter the valid data'}) 
     
 class DeleteUserView(GenericAPIView):
@@ -197,7 +199,7 @@ class AddProductView(GenericAPIView):
         serializer=AddProductSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save(seller=request.user)
-            return Response({'data':serializer.data,'status':status.HTTP_200_OK,'msg':'product add for selling'})
+            return Response({'status':status.HTTP_200_OK,'msg':'product add for selling','data':serializer.data})
         return Response({'status':status.HTTP_404_NOT_FOUND,'msg':'enter the valid data'})
 
 class ViewProductView(GenericAPIView):
@@ -226,7 +228,7 @@ class EditProductView(GenericAPIView):
             serializer=EditProductSerializer(instance=pro,data=request.data)
             if serializer.is_valid():
                 serializer.save()
-                return Response({'data':serializer.data,'status':status.HTTP_200_OK,'msg':'your product Update'})
+                return Response({'status':status.HTTP_200_OK,'msg':'your product Update','data':serializer.data})
             return Response({'status':status.HTTP_404_NOT_FOUND,'msg':'enter the valid data'})
         return Response('you cannot edit other seller product')
 
@@ -490,3 +492,4 @@ class SearchView(ListAPIView):
     serializer_class=BuyerIndexSerializer
     filter_backends=[SearchFilter]
     search_fields=['^product_name']
+    
